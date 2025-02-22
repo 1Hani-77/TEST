@@ -47,6 +47,7 @@ def load_and_clean_data():
                 .str.replace(r'[^\d.]', '', regex=True)
                 .replace({'': np.nan, 'nan': np.nan, 'None': np.nan})
                 .apply(pd.to_numeric, errors='coerce')
+            )  # Added closing parenthesis here
             
         # Remove rows with invalid numeric values
         df_clean = df.dropna(subset=numeric_cols).copy()
@@ -61,7 +62,7 @@ def load_and_clean_data():
         Q3 = df_clean[numeric_cols].quantile(0.95)
         IQR = Q3 - Q1
 
-        # Fixed outlier detection with proper parentheses
+        # Identify outliers with proper parentheses
         outlier_mask = (
             (df_clean[numeric_cols] < (Q1 - 1.5 * IQR)) | 
             (df_clean[numeric_cols] > (Q3 + 1.5 * IQR))
