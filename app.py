@@ -38,7 +38,6 @@ def load_and_clean_data():
 
         # Enhanced numeric conversion with error tracking
         numeric_cols = ['price', 'area']
-        conversion_errors = {col: 0 for col in numeric_cols}
         
         for col in numeric_cols:
             # Remove non-numeric characters and convert to float
@@ -48,8 +47,6 @@ def load_and_clean_data():
                 .str.replace(r'[^\d.]', '', regex=True)
                 .replace({'': np.nan, 'nan': np.nan, 'None': np.nan})
                 .apply(pd.to_numeric, errors='coerce')
-            )
-            conversion_errors[col] = df[col].isna().sum()
             
         # Remove rows with invalid numeric values
         df_clean = df.dropna(subset=numeric_cols).copy()
@@ -64,10 +61,10 @@ def load_and_clean_data():
         Q3 = df_clean[numeric_cols].quantile(0.95)
         IQR = Q3 - Q1
 
-        # Identify outliers with proper parentheses
+        # Fixed outlier detection with proper parentheses
         outlier_mask = (
             (df_clean[numeric_cols] < (Q1 - 1.5 * IQR)) | 
-            (df_clean[numeric_cols] > (Q3 + 1.5 * IQR)
+            (df_clean[numeric_cols] > (Q3 + 1.5 * IQR))
         ).any(axis=1)
 
         final_df = df_clean[~outlier_mask]
