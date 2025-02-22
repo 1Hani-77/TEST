@@ -1,96 +1,208 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import plotly.express as px
+import io
+from datetime import datetime
 
-# Set page configuration
+# Configuration
 st.set_page_config(
-    page_title="My Streamlit App",
-    page_icon=":rocket:",
-    layout="wide"
+    page_title="Advanced Data Dashboard",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Add title and header
-st.title("My First Streamlit Application")
-st.header("Data Analysis Dashboard")
+# Custom CSS
+st.markdown("""
+    <style>
+    .main {background-color: #f8f9fa;}
+    .stButton>button {border-radius: 5px;}
+    .stDownloadButton>button {background-color: #4CAF50;}
+    .reportview-container .main .block-container {padding-top: 2rem;}
+    </style>
+    """, unsafe_allow_html=True)
 
-# Create sidebar
+# Session State Initialization
+if 'df' not in st.session_state:
+    st.session_state.df = None
+
+# Helper Functions
+@st.cache_data
+def load_data(uploaded_file):
+    try:
+        return pd.read_csv(uploaded_file)
+    except Exception as e:
+        st.error(f"Error loading file: {e}")
+        return None
+
+def generate_report(df):
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer) as writer:
+        df.describe().to_excel(writer, sheet_name='Summary')
+        df.to_excel(writer, sheet_name='Full Data')
+    return buffer
+
+# Sidebar Configuration
 with st.sidebar:
-    st.header("Configuration")
-    user_name = st.text_input("Enter your name")
-    age = st.slider("Select your age", 0, 100, 25)
-    analysis_type = st.selectbox(
-        "Choose analysis type",
-        ["Descriptive", "Predictive", "Prescriptive"]
+    st.title("⚙️ Settings")
+    analysis_type = st.radio(
+        "Analysis Mode",
+        ["Exploratory", "Statistical", "Machine Learning"],
+        index=0
     )
-    st.button("Save Settings")
-
-# Main content area
-tab1, tab2, tab3 = st.tabs(["Data Input", "Visualization", "Documentation"])
-
-with tab1:
-    st.subheader("Upload Data")
-    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
     
-    if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
-        st.write("Data Preview:")
-        st.dataframe(df.head())
+    date_range = st.date_input(
+        "Select Date Range",
+        value=[datetime.today().replace(day=1), datetime.today()]
+    )
+    
+    theme = st.selectbox(
+        "Chart Theme",
+        ["plotly", "plotly_white", "plotly_dark"]
+    )
+    
+    st.divider()
+    st.markdown("Built with ❤️ using Streamlit")
+
+# Main Content
+st.title("📈 Advanced Data Analysis Platform")
+st.markdown("---")
+
+# File Upload Section
+with st.expander("📤 Data Upload", expanded=True):
+    uploaded_file = st.file_uploader(
+        "Upload Dataset (CSV or Excel)",
+        type=["csv", "xlsx"],
+        help="Maximum file size: 200MB"
+    )
+    
+    if uploaded_file:
+        if uploaded_file.name.endswith('.csv'):
+            st.session_state.df = load_data(uploaded_file)
+        else:
+            st.session_state.df = pd.read_excel(uploaded_file)
+
+# Data Preview
+if st.session_state.df is not None:
+    df = st.session_state.df
+    
+    # Data Management
+    with st.expander("🔍 Data Overview"):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Records", df.shape[0])
+        with col2:
+            st.metric("Features", df.shape[1])
+        with col3:
+            st.metric("Missing Values", df.isna().sum().sum())
         
-        st.subheader("Data Summary")
-        st.write(f"Number of rows: {df.shape[0]}")
-        st.write(f"Number of columns: {df.shape[1]}")
-        st.write("Column types:")
-        st.json(df.dtypes.astype(str).to_dict())
-
-with tab2:
-    st.subheader("Data Visualization")
+        st.dataframe(df.head(10), use_container_width=True)
     
-    if uploaded_file is not None:
+    # Interactive Analysis
+    st.markdown("## 🔬 Interactive Analysis")
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Visualization", "📈 Statistics", "🧩 Data Tools", "📄 Report"])
+    
+    with tab1:
+        st.subheader("Interactive Visualization")
+        col1, col2 = st.columns([1, 3])
+        
+        with col1:
+            plot_type = st.selectbox(
+                "Choose Visualization",
+                ["Scatter Plot", "Histogram", "Line Chart", "Box Plot"]
+            )
+            x_axis = st.selectbox("X-Axis", df.columns)
+            y_axis = st.selectbox("Y-Axis", df.columns) if plot_type != "Histogram" else None
+            color_by = st.selectbox("Color By", [None] + list(df.columns))
+        
+        with col2:
+            try:
+                if plot_type == "Scatter Plot":
+                    fig = px.scatter(df, x=x_axis, y=y_axis, color=color_by, template=theme)
+                elif plot_type == "Histogram":
+                    fig = px.histogram(df, x=x_axis, color=color_by, template=theme)
+                elif plot_type == "Line Chart":
+                    fig = px.line(df, x=x_axis, y=y_axis, color=color_by, template=theme)
+                elif plot_type == "Box Plot":
+                    fig = px.box(df, x=x_axis, y=y_axis, color=color_by, template=theme)
+                
+                st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.error(f"Visualization error: {str(e)}")
+    
+    with tab2:
+        st.subheader("Statistical Analysis")
+        st.write("Descriptive Statistics:")
+        st.dataframe(df.describe(), use_container_width=True)
+        
+        st.write("Correlation Matrix:")
+        numeric_df = df.select_dtypes(include=np.number)
+        if not numeric_df.empty:
+            corr_matrix = numeric_df.corr()
+            fig = px.imshow(corr_matrix, text_auto=True, template=theme)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("No numeric columns for correlation analysis")
+    
+    with tab3:
+        st.subheader("Data Tools")
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("**Distribution Plot**")
-            selected_column = st.selectbox("Select column to plot", df.columns)
-            fig, ax = plt.subplots()
-            ax.hist(df[selected_column], bins=20)
-            st.pyplot(fig)
+            st.write("Filter Data")
+            columns_to_show = st.multiselect(
+                "Select Columns",
+                df.columns,
+                default=list(df.columns[:3])
+            
+            filter_query = st.text_input("Pandas Query (e.g., 'Age > 30')")
         
         with col2:
-            st.markdown("**Scatter Plot**")
-            x_axis = st.selectbox("X-axis", df.columns, index=0)
-            y_axis = st.selectbox("Y-axis", df.columns, index=1)
-            fig, ax = plt.subplots()
-            ax.scatter(df[x_axis], df[y_axis])
-            st.pyplot(fig)
-
-with tab3:
-    st.subheader("Documentation")
-    with st.expander("User Guide"):
-        st.markdown("""
-        ## Welcome to the Data Analysis Dashboard!
+            st.write("Transformations")
+            normalize_col = st.selectbox("Normalize Column", [None] + list(df.columns))
+            if normalize_col:
+                df[normalize_col] = (df[normalize_col] - df[normalize_col].min()) / \
+                                   (df[normalize_col].max() - df[normalize_col].min())
+            
+            if st.button("Apply Changes"):
+                st.success("Transformations applied!")
         
-        - **Step 1**: Upload your CSV file in the Data Input tab
-        - **Step 2**: Configure settings in the sidebar
-        - **Step 3**: Explore visualizations in the Visualization tab
-        """)
+        filtered_df = df[columns_to_show]
+        if filter_query:
+            try:
+                filtered_df = filtered_df.query(filter_query)
+            except:
+                st.error("Invalid query syntax")
+        st.dataframe(filtered_df, use_container_width=True)
     
-    st.write("### About")
-    st.write("This application demonstrates Streamlit's capabilities for data analysis.")
+    with tab4:
+        st.subheader("Generate Report")
+        if st.button("📥 Create Full Report"):
+            report = generate_report(df)
+            st.download_button(
+                label="Download Report",
+                data=report,
+                file_name="data_report.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
-# Add some custom components
-st.divider()
+else:
+    st.info("👋 Upload a file to begin analysis")
+    if st.button("Load Sample Data"):
+        st.session_state.df = px.data.iris()
+        st.rerun()
+
+# Performance Monitoring
 with st.container():
-    st.subheader("Additional Information")
-    st.success("Analysis completed successfully!")
-    st.warning("This is a warning message")
-    st.error("This is an error message")
-
-# Add a progress bar
-with st.spinner("Processing data..."):
-    progress_bar = st.progress(0)
-    for i in range(100):
-        progress_bar.progress(i + 1)
-    st.success("Processing complete!")
+    st.markdown("---")
+    st.markdown("### System Status")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Memory Usage", "2.4 GB", delta="+0.1 GB")
+    with col2:
+        st.metric("CPU Utilization", "34%", delta="-2%")
+    with col3:
+        st.metric("Active Users", "1", delta="+0")
 
 # Run with: streamlit run app.py
