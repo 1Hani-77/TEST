@@ -28,8 +28,8 @@ def load_data():
     # Convert to numeric and clean data
     df['price'] = pd.to_numeric(df['price'].astype(str).str.replace(r'[^\d.]', ''), errors='coerce')
     df['area'] = pd.to_numeric(df['area'].astype(str).str.replace(r'[^\d.]', ''), errors='coerce')
-    
-    # Remove outliers using IQR method
+   
+   # Remove outliers using IQR method
 Q1 = df[['price', 'area']].quantile(0.05)
 Q3 = df[['price', 'area']].quantile(0.95)
 IQR = Q3 - Q1
