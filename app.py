@@ -29,11 +29,15 @@ def load_data():
     df['price'] = pd.to_numeric(df['price'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
     df['area'] = pd.to_numeric(df['area'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
     
-    # Remove outliers using IQR method
+    # Remove outliers using IQR method (FIXED PARENTHESES HERE)
     Q1 = df[['price', 'area']].quantile(0.05)
     Q3 = df[['price', 'area']].quantile(0.95)
-    df = df[~((df[['price', 'area']] < (Q1 - 1.5 * (Q3 - Q1))) | 
-            (df[['price', 'area']] > (Q3 + 1.5 * (Q3 - Q1))).any(axis=1)]
+    IQR = Q3 - Q1
+    mask = (
+        (df[['price', 'area']] < (Q1 - 1.5 * IQR)) | 
+        (df[['price', 'area']] > (Q3 + 1.5 * IQR))
+    ).any(axis=1)
+    df = df[~mask]
     
     return df.dropna(subset=['price', 'area'])
 
