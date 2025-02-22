@@ -2,92 +2,149 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+import plotly.express as px
 
+# Page config
+st.set_page_config(page_title="Real Estate Price Prediction", layout="wide")
+
+# App title
 st.title('🏠 Real Estate Price Prediction App')
 st.info('This app predicts real estate prices based on property features!')
 
-# Data loading section
-with st.expander('Data'):
-    st.write('**Raw data**')
-    # Replace this with your actual data loading
-     #df = pd.read_csv('https://drive.google.com/file/d/1V2lYixxk2AeBFM5nzIcH82729RbQqBuh/view?usp=drive_link')
+# Load data from GitHub
+@st.cache_data
+def load_data():
+    # Replace this URL with your GitHub raw data URL
+    url = "YOUR_GITHUB_RAW_DATA_URL"
+    df = pd.read_csv(url)
+    return df
+
+try:
+    df = load_data()
+    st.success("Data loaded successfully!")
+except:
+    st.error("Error loading data. Please check the data URL.")
+    st.stop()
+
+# Data Overview
+with st.expander("Data Overview"):
+    st.write("### Raw Data Sample")
+    st.dataframe(df.head())
     
-    # For now, we'll create a placeholder for the explanation
-   # st.write('Please load your dataset here')
+    st.write("### Data Statistics")
+    st.dataframe(df.describe())
+
+    # Distribution plots
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write("### Price Distribution")
+        fig = px.histogram(df, x='price', title='Price Distribution')
+        st.plotly_chart(fig)
     
-# Input features
+    with col2:
+        st.write("### Area vs Price")
+        fig = px.scatter(df, x='area', y='price', color='neighborhood_name',
+                        title='Area vs Price by Neighborhood')
+        st.plotly_chart(fig)
+
+# Sidebar inputs
 with st.sidebar:
-    st.header('Property Features')
-    neighborhood = st.selectbox('Neighborhood', ['Please add your neighborhoods'])
-    classification = st.selectbox('Classification', ['Please add your classifications'])
-    property_type = st.selectbox('Property Type', ['Please add your property types'])
-    area = st.slider('Area (m²)', 0, 1000, 100)  # Adjust min/max based on your data
+    st.header("Enter Property Details")
     
-    # Create a DataFrame for the input features
-    data = {
-        'neighborhood_name': neighborhood,
-        'classification_name': classification,
-        'property_type_name': property_type,
-        'area': area
-    }
-    input_df = pd.DataFrame(data, index=[0])
-
-with st.expander('Input features'):
-    st.write('**Selected Property Features**')
-    st.dataframe(input_df)
-
-# Data preparation
-def prepare_data(df, input_df):
-    # Create label encoders for categorical variables
-    encoders = {}
-    categorical_cols = ['neighborhood_name', 'classification_name', 'property_type_name']
+    neighborhood = st.selectbox(
+        "Select Neighborhood",
+        options=sorted(df['neighborhood_name'].unique())
+    )
     
-    for col in categorical_cols:
-        encoders[col] = LabelEncoder()
-        # Fit on all unique values from both training data and input
-        unique_values = list(df[col].unique()) + list(input_df[col].unique())
-        encoders[col].fit(unique_values)
-        
-        # Transform the data
-        df[f"{col}_encoded"] = encoders[col].transform(df[col])
-        input_df[f"{col}_encoded"] = encoders[col].transform(input_df[col])
+    classification = st.selectbox(
+        "Select Classification",
+        options=sorted(df['classification_name'].unique())
+    )
     
-    # Prepare X and y for the model
-    feature_cols = [col + '_encoded' for col in categorical_cols] + ['area']
-    X = df[feature_cols]
-    y = df['price']  # Adjust this to match your price column name
+    property_type = st.selectbox(
+        "Select Property Type",
+        options=sorted(df['property_type_name'].unique())
+    )
     
-    # Prepare input features
-    input_features = input_df[feature_cols]
+    area = st.slider(
+        "Area (m²)",
+        min_value=float(df['area'].min()),
+        max_value=float(df['area'].max()),
+        value=float(df['area'].mean())
+    )
+
+# Prepare features
+input_data = pd.DataFrame({
+    'neighborhood_name': [neighborhood],
+    'classification_name': [classification],
+    'property_type_name': [property_type],
+    'area': [area]
+})
+
+# Model training
+@st.cache_resource
+def train_model(df):
+    # Prepare features
+    X = pd.get_dummies(df[['neighborhood_name', 'classification_name', 
+                          'property_type_name', 'area']], drop_first=True)
+    y = df['price']
     
-    return X, y, input_features, encoders
+    # Train model
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X, y)
+    return model, X.columns
 
-# Once you have your data loaded, uncomment and modify these lines:
-# X, y, input_features, encoders = prepare_data(df, input_df)
+# Train model
+model, feature_names = train_model(df)
 
-# Model training and prediction
-# Uncomment and modify these lines when you have your data:
-# model = RandomForestRegressor(n_estimators=100, random_state=42)
-# model.fit(X, y)
-# prediction = model.predict(input_features)
+# Make prediction
+X_input = pd.get_dummies(input_data, drop_first=True)
+# Ensure input has same columns as training data
+for col in feature_names:
+    if col not in X_input.columns:
+        X_input[col] = 0
+X_input = X_input[feature_names]
 
-# Display predicted price
-st.subheader('Predicted Price')
-# Uncomment and modify this when you have your data:
-# st.success(f"Predicted Price: ${prediction[0]:,.2f}")
+prediction = model.predict(X_input)[0]
 
-# Optional: Add feature importance plot
-# if st.checkbox('Show Feature Importance'):
-#     feature_importance = pd.DataFrame({
-#         'feature': X.columns,
-#         'importance': model.feature_importances_
-#     }).sort_values('importance', ascending=False)
-#     
-#     st.bar_chart(feature_importance.set_index('feature'))
+# Display prediction
+st.write("## Predicted Price")
+st.write(f"### ${prediction:,.2f}")
 
-# Optional: Add some visualizations
-with st.expander('Data Visualization'):
-    st.write("Add your visualizations here once the data is loaded")
-    # Example visualization code:
-    # st.scatter_chart(data=df, x='area', y='price', color='neighborhood_name')
+# Feature importance
+with st.expander("Model Insights"):
+    st.write("### Feature Importance")
+    feature_importance = pd.DataFrame({
+        'feature': feature_names,
+        'importance': model.feature_importances_
+    }).sort_values('importance', ascending=False)
+    
+    fig = px.bar(feature_importance, x='importance', y='feature', 
+                 orientation='h', title='Feature Importance')
+    st.plotly_chart(fig)
+
+# Similar properties
+with st.expander("Similar Properties"):
+    st.write("### Properties in the same neighborhood")
+    similar_properties = df[df['neighborhood_name'] == neighborhood].head()
+    st.dataframe(similar_properties)
+    
+    # Plot similar properties
+    fig = px.scatter(similar_properties, x='area', y='price',
+                    title='Similar Properties: Area vs Price',
+                    hover_data=['classification_name', 'property_type_name'])
+    st.plotly_chart(fig)
+
+# Add download button for the model predictions
+if st.button('Download Prediction Report'):
+    prediction_report = pd.DataFrame({
+        'Feature': ['Neighborhood', 'Classification', 'Property Type', 'Area', 'Predicted Price'],
+        'Value': [neighborhood, classification, property_type, area, prediction]
+    })
+    st.download_button(
+        label="Download Report as CSV",
+        data=prediction_report.to_csv(index=False),
+        file_name="prediction_report.csv",
+        mime="text/csv"
+    )
