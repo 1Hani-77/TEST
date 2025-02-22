@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import r2_score, mean_absolute_error
+from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 import plotly.express as px
 
 # Page config
@@ -26,15 +26,14 @@ def load_data():
             raise ValueError(f"Missing required column: {col}")
     
     # Convert to numeric and clean data
-    df['price'] = pd.to_numeric(df['price'].astype(str).str.replace(r'[^\d.]', ''), errors='coerce')
-    df['area'] = pd.to_numeric(df['area'].astype(str).str.replace(r'[^\d.]', ''), errors='coerce')
-   
-   # Remove outliers using IQR method
-Q1 = df[['price', 'area']].quantile(0.05)
-Q3 = df[['price', 'area']].quantile(0.95)
-IQR = Q3 - Q1
-df = df[~((df[['price', 'area']] < (Q1 - 1.5 * IQR)) | 
-         (df[['price', 'area']] > (Q3 + 1.5 * IQR))).any(axis=1)]
+    df['price'] = pd.to_numeric(df['price'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+    df['area'] = pd.to_numeric(df['area'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+    
+    # Remove outliers using IQR method
+    Q1 = df[['price', 'area']].quantile(0.05)
+    Q3 = df[['price', 'area']].quantile(0.95)
+    df = df[~((df[['price', 'area']] < (Q1 - 1.5 * (Q3 - Q1))) | 
+            (df[['price', 'area']] > (Q3 + 1.5 * (Q3 - Q1))).any(axis=1)]
     
     return df.dropna(subset=['price', 'area'])
 
