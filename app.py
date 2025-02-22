@@ -1,209 +1,93 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
-import io
-from datetime import datetime
+from sklearn.ensemble import RandomForestRegressor
 
-# Configuration
-st.set_page_config(
-    page_title="Advanced Data Dashboard",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# 1. App Setup
+st.title('🏠 Real Estate Price Predictor')
+st.info('This app predicts property prices using machine learning!')
 
-# Custom CSS
-st.markdown("""
-    <style>
-    .main {background-color: #f8f9fa;}
-    .stButton>button {border-radius: 5px;}
-    .stDownloadButton>button {background-color: #4CAF50;}
-    .reportview-container .main .block-container {padding-top: 2rem;}
-    </style>
-    """, unsafe_allow_html=True)
+# 2. Data Loading
+with st.expander('Real Estate Data'):
+    # Load sample dataset (replace with your data)
+    data_url = "https://drive.google.com/file/d/1V2lYixxk2AeBFM5nzIcH82729RbQqBuh/view?usp=drive_link"
+    df = pd.read_csv(data_url)
+    
+    st.write('**Raw Data**')
+    st.dataframe(df)
+    
+    st.write('**Features (X)**')
+    X_raw = df.drop('price', axis=1)
+    st.dataframe(X_raw)
+    
+    st.write('**Target (y)**')
+    y_raw = df.price
+    st.dataframe(y_raw)
 
-# Session State Initialization
-if 'df' not in st.session_state:
-    st.session_state.df = None
+# 3. Data Visualization
+with st.expander('Market Insights'):
+    st.write('**Price Distribution**')
+    st.hist_chart(df.price)
+    
+    st.write('**Area vs Price**')
+    st.scatter_chart(df, x='area', y='price', color='neighborhood_name')
 
-# Helper Functions
-@st.cache_data
-def load_data(uploaded_file):
-    try:
-        return pd.read_csv(uploaded_file)
-    except Exception as e:
-        st.error(f"Error loading file: {e}")
-        return None
-
-def generate_report(df):
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer) as writer:
-        df.describe().to_excel(writer, sheet_name='Summary')
-        df.to_excel(writer, sheet_name='Full Data')
-    return buffer
-
-# Sidebar Configuration
+# 4. Sidebar Inputs
 with st.sidebar:
-    st.title("⚙️ Settings")
-    analysis_type = st.radio(
-        "Analysis Mode",
-        ["Exploratory", "Statistical", "Machine Learning"],
-        index=0
-    )
+    st.header('Property Details')
     
-    date_range = st.date_input(
-        "Select Date Range",
-        value=[datetime.today().replace(day=1), datetime.today()]
-    )
+    neighborhood_name = st.selectbox('Neighborhood', 
+                                   df.neighborhood_name.unique())
     
-    theme = st.selectbox(
-        "Chart Theme",
-        ["plotly", "plotly_white", "plotly_dark"]
-    )
+    classification_name = st.selectbox('Property Classification',
+                                     df.classification_name.unique())
     
-    st.divider()
-    st.markdown("Built with ❤️ using Streamlit")
+    property_type_name = st.selectbox('Property Type',
+                                    df.property_type_name.unique())
+    
+    area = st.number_input('Area (sqm)', 
+                         min_value=30, 
+                         max_value=1000, 
+                         value=100)
 
-# Main Content
-st.title("📈 Advanced Data Analysis Platform")
-st.markdown("---")
+# 5. Data Preparation
+input_data = {
+    'neighborhood_name': neighborhood_name,
+    'classification_name': classification_name,
+    'property_type_name': property_type_name,
+    'area': area
+}
 
-# File Upload Section
-with st.expander("📤 Data Upload", expanded=True):
-    uploaded_file = st.file_uploader(
-        "Upload Dataset (CSV or Excel)",
-        type=["csv", "xlsx"],
-        help="Maximum file size: 200MB"
-    )
-    
-    if uploaded_file:
-        if uploaded_file.name.endswith('.csv'):
-            st.session_state.df = load_data(uploaded_file)
-        else:
-            st.session_state.df = pd.read_excel(uploaded_file)
+input_df = pd.DataFrame(input_data, index=[0])
+combined_data = pd.concat([input_df, X_raw], axis=0)
 
-# Data Preview
-if st.session_state.df is not None:
-    df = st.session_state.df
-    
-    # Data Management
-    with st.expander("🔍 Data Overview"):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Total Records", df.shape[0])
-        with col2:
-            st.metric("Features", df.shape[1])
-        with col3:
-            st.metric("Missing Values", df.isna().sum().sum())
-        
-        st.dataframe(df.head(10), use_container_width=True)
-    
-    # Interactive Analysis
-    st.markdown("## 🔬 Interactive Analysis")
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Visualization", "📈 Statistics", "🧩 Data Tools", "📄 Report"])
-    
-    with tab1:
-        st.subheader("Interactive Visualization")
-        col1, col2 = st.columns([1, 3])
-        
-        with col1:
-            plot_type = st.selectbox(
-                "Choose Visualization",
-                ["Scatter Plot", "Histogram", "Line Chart", "Box Plot"]
-            )
-            x_axis = st.selectbox("X-Axis", df.columns)
-            y_axis = st.selectbox("Y-Axis", df.columns) if plot_type != "Histogram" else None
-            color_by = st.selectbox("Color By", [None] + list(df.columns))
-        
-        with col2:
-            try:
-                if plot_type == "Scatter Plot":
-                    fig = px.scatter(df, x=x_axis, y=y_axis, color=color_by, template=theme)
-                elif plot_type == "Histogram":
-                    fig = px.histogram(df, x=x_axis, color=color_by, template=theme)
-                elif plot_type == "Line Chart":
-                    fig = px.line(df, x=x_axis, y=y_axis, color=color_by, template=theme)
-                elif plot_type == "Box Plot":
-                    fig = px.box(df, x=x_axis, y=y_axis, color=color_by, template=theme)
-                
-                st.plotly_chart(fig, use_container_width=True)
-            except Exception as e:
-                st.error(f"Visualization error: {str(e)}")
-    
-    with tab2:
-        st.subheader("Statistical Analysis")
-        st.write("Descriptive Statistics:")
-        st.dataframe(df.describe(), use_container_width=True)
-        
-        st.write("Correlation Matrix:")
-        numeric_df = df.select_dtypes(include=np.number)
-        if not numeric_df.empty:
-            corr_matrix = numeric_df.corr()
-            fig = px.imshow(corr_matrix, text_auto=True, template=theme)
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.warning("No numeric columns for correlation analysis")
-    
-    with tab3:
-        st.subheader("Data Tools")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("Filter Data")
-            columns_to_show = st.multiselect(
-                "Select Columns",
-                df.columns,
-                default=list(df.columns[:3])
-            )
-            
-            filter_query = st.text_input("Pandas Query (e.g., 'Age > 30')")
-        
-        with col2:
-            st.write("Transformations")
-            normalize_col = st.selectbox("Normalize Column", [None] + list(df.columns))
-            if normalize_col:
-                df[normalize_col] = (df[normalize_col] - df[normalize_col].min()) / \
-                                   (df[normalize_col].max() - df[normalize_col].min())
-            
-            if st.button("Apply Changes"):
-                st.success("Transformations applied!")
-        
-        filtered_df = df[columns_to_show]
-        if filter_query:
-            try:
-                filtered_df = filtered_df.query(filter_query)
-            except:
-                st.error("Invalid query syntax")
-        st.dataframe(filtered_df, use_container_width=True)
-    
-    with tab4:
-        st.subheader("Generate Report")
-        if st.button("📥 Create Full Report"):
-            report = generate_report(df)
-            st.download_button(
-                label="Download Report",
-                data=report,
-                file_name="data_report.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+# Encode categorical features
+encoded_data = pd.get_dummies(combined_data, 
+                            columns=['neighborhood_name', 
+                                   'classification_name',
+                                   'property_type_name'])
 
-else:
-    st.info("👋 Upload a file to begin analysis")
-    if st.button("Load Sample Data"):
-        st.session_state.df = px.data.iris()
-        st.rerun()
+# Split back into input/training data
+X = encoded_data[1:]
+input_encoded = encoded_data[:1]
 
-# Performance Monitoring
-with st.container():
-    st.markdown("---")
-    st.markdown("### System Status")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Memory Usage", "2.4 GB", delta="+0.1 GB")
-    with col2:
-        st.metric("CPU Utilization", "34%", delta="-2%")
-    with col3:
-        st.metric("Active Users", "1", delta="+0")
+# 6. Model Training
+model = RandomForestRegressor()
+model.fit(X, y_raw)
 
-# Run with: streamlit run app.py
+# 7. Prediction
+prediction = model.predict(input_encoded)
+
+# 8. Display Results
+st.subheader('Price Prediction')
+st.metric(label="Estimated Property Value", 
+        value=f"${prediction[0]:,.2f}",
+        delta="Market Average ${:,.2f}".format(y_raw.mean()))
+
+st.write('**Feature Importance**')
+importances = pd.DataFrame({
+    'Feature': X.columns,
+    'Importance': model.feature_importances_
+}).sort_values('Importance', ascending=False)
+
+st.bar_chart(importances.set_index('Feature'))
