@@ -145,36 +145,37 @@ if st.session_state.df is not None:
         else:
             st.warning("No numeric columns for correlation analysis")
     
-    with tab3:
-        st.subheader("Data Tools")
-        col1, col2 = st.columns(2)
+   with tab3:
+    st.subheader("Data Tools")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write("Filter Data")
+        columns_to_show = st.multiselect(
+            "Select Columns",
+            df.columns,
+            default=list(df.columns[:3])
+        )
         
-        with col1:
-            st.write("Filter Data")
-            columns_to_show = st.multiselect(
-                "Select Columns",
-                df.columns,
-                default=list(df.columns[:3])
-            
-            filter_query = st.text_input("Pandas Query (e.g., 'Age > 30')")
+        filter_query = st.text_input("Pandas Query (e.g., 'Age > 30')")
+    
+    with col2:
+        st.write("Transformations")
+        normalize_col = st.selectbox("Normalize Column", [None] + list(df.columns))
+        if normalize_col:
+            df[normalize_col] = (df[normalize_col] - df[normalize_col].min()) / \
+                               (df[normalize_col].max() - df[normalize_col].min())
         
-        with col2:
-            st.write("Transformations")
-            normalize_col = st.selectbox("Normalize Column", [None] + list(df.columns))
-            if normalize_col:
-                df[normalize_col] = (df[normalize_col] - df[normalize_col].min()) / \
-                                   (df[normalize_col].max() - df[normalize_col].min())
-            
-            if st.button("Apply Changes"):
-                st.success("Transformations applied!")
-        
-        filtered_df = df[columns_to_show]
-        if filter_query:
-            try:
-                filtered_df = filtered_df.query(filter_query)
-            except:
-                st.error("Invalid query syntax")
-        st.dataframe(filtered_df, use_container_width=True)
+        if st.button("Apply Changes"):
+            st.success("Transformations applied!")
+    
+    filtered_df = df[columns_to_show]
+    if filter_query:
+        try:
+            filtered_df = filtered_df.query(filter_query)
+        except:
+            st.error("Invalid query syntax")
+    st.dataframe(filtered_df, use_container_width=True)
     
     with tab4:
         st.subheader("Generate Report")
