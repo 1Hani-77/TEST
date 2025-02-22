@@ -30,10 +30,11 @@ def load_data():
     df['area'] = pd.to_numeric(df['area'].astype(str).str.replace(r'[^\d.]', ''), errors='coerce')
     
     # Remove outliers using IQR method
-    Q1 = df[['price', 'area']].quantile(0.05)
-    Q3 = df[['price', 'area']].quantile(0.95)
-    df = df[~((df[['price', 'area']] < (Q1 - 1.5 * (Q3 - Q1))) |
-             (df[['price', 'area']] > (Q3 + 1.5 * (Q3 - Q1))).any(axis=1)])
+Q1 = df[['price', 'area']].quantile(0.05)
+Q3 = df[['price', 'area']].quantile(0.95)
+IQR = Q3 - Q1
+df = df[~((df[['price', 'area']] < (Q1 - 1.5 * IQR)) | 
+         (df[['price', 'area']] > (Q3 + 1.5 * IQR))).any(axis=1)]
     
     return df.dropna(subset=['price', 'area'])
 
