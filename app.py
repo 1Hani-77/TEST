@@ -12,62 +12,74 @@ st.info('This app predicts real estate prices in Abha!')
 with st.expander('Data'):
     st.write('**Raw data**')
     df = pd.read_csv('https://raw.githubusercontent.com/1Hani-77/TEST/refs/heads/main/abha%20real%20estate.csv')
+    
     # Display the column names to verify structure
     st.write("Column names:", df.columns.tolist())
+    
     # Drop any rows with missing values
     df = df.dropna()
     st.dataframe(df)
     
     st.write('**Features (X)**')
-    # Identify the actual target column name from the dataset
-    X_raw = df.drop(['Price'], axis=1)  # Changed from 'price' to 'Price'
+    # Get target column name dynamically
+    price_col = [col for col in df.columns if 'price' in col.lower()][0]
+    X_raw = df.drop([price_col], axis=1)
     st.dataframe(X_raw)
     
     st.write('**Target (y)**')
-    y_raw = df['Price']  # Changed from 'price' to 'Price'
+    y_raw = df[price_col]
     st.dataframe(y_raw)
 
 # Data visualization
 with st.expander('Data visualization'):
+    size_col = [col for col in df.columns if 'size' in col.lower()][0]
+    property_type_col = [col for col in df.columns if 'type' in col.lower()][0]
+    
     st.scatter_chart(
         data=df,
-        x='Size',  # Updated column name
-        y='Price', # Updated column name
-        color='Property Type'  # Updated column name
+        x=size_col,
+        y=price_col,
+        color=property_type_col
     )
 
 # Input features
 with st.sidebar:
     st.header('Property Features')
     
+    property_type_col = [col for col in df.columns if 'type' in col.lower()][0]
+    size_col = [col for col in df.columns if 'size' in col.lower()][0]
+    rooms_col = [col for col in df.columns if 'room' in col.lower()][0]
+    bathrooms_col = [col for col in df.columns if 'bath' in col.lower()][0]
+    location_col = [col for col in df.columns if 'location' in col.lower()][0]
+    
     property_type = st.selectbox('Property Type', 
-                                df['Property Type'].unique().tolist())
+                                df[property_type_col].unique().tolist())
     
     size = st.slider('Size (sq meters)', 
-                     float(df['Size'].min()), 
-                     float(df['Size'].max()),
-                     float(df['Size'].mean()))
+                     float(df[size_col].min()), 
+                     float(df[size_col].max()),
+                     float(df[size_col].mean()))
     
     rooms = st.slider('Number of Rooms',
-                      int(df['Rooms'].min()),
-                      int(df['Rooms'].max()),
-                      int(df['Rooms'].median()))
+                      int(df[rooms_col].min()),
+                      int(df[rooms_col].max()),
+                      int(df[rooms_col].median()))
     
     bathrooms = st.slider('Number of Bathrooms',
-                         int(df['Bathrooms'].min()),
-                         int(df['Bathrooms'].max()),
-                         int(df['Bathrooms'].median()))
+                         int(df[bathrooms_col].min()),
+                         int(df[bathrooms_col].max()),
+                         int(df[bathrooms_col].median()))
     
     location = st.selectbox('Location',
-                           df['Location'].unique().tolist())
+                           df[location_col].unique().tolist())
     
     # Create DataFrame for input features
     input_data = {
-        'Property Type': property_type,
-        'Size': size,
-        'Rooms': rooms,
-        'Bathrooms': bathrooms,
-        'Location': location
+        property_type_col: property_type,
+        size_col: size,
+        rooms_col: rooms,
+        bathrooms_col: bathrooms,
+        location_col: location
     }
     input_df = pd.DataFrame(input_data, index=[0])
 
@@ -82,7 +94,7 @@ input_properties = pd.concat([input_df, X_raw], axis=0)
 
 # Encode categorical variables
 le = LabelEncoder()
-categorical_cols = ['Property Type', 'Location']
+categorical_cols = [property_type_col, location_col]
 
 for col in categorical_cols:
     input_properties[col] = le.fit_transform(input_properties[col])
