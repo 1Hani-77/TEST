@@ -1,146 +1,161 @@
 import streamlit as st
-import pandas as pd
 import numpy as np
+import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error, r2_score
-import joblib
+import plotly.express as px
 
-# Configure page
-st.set_page_config(page_title="ABHA Real Estate Predictor", page_icon="🏠")
-
-# Load data
-@st.cache_data
-def load_data():
-    url = 'https://raw.githubusercontent.com/SLW-20/ProjectMIS/master/abha%20real%20estate.csv'
-    return pd.read_csv(url)
-
-df = load_data()
+# Page config
+st.set_page_config(page_title="Real Estate Price Prediction", layout="wide")
 
 # App title
-st.title('🏠 ABHA Real Estate Price Prediction')
-st.markdown("Predict property prices in Abha using machine learning")
+st.title('🏠 Real Estate Price Prediction App')
+st.info('This app predicts real estate prices based on property features!')
 
-# Main content
-with st.expander("📊 View Raw Data"):
-    st.dataframe(df, use_container_width=True)
-    st.write(f"Dataset shape: {df.shape}")
-
-# Data preprocessing
-def preprocess_data(input_df):
-    # Combine user input with dataset
-    combined = pd.concat([input_df, df.drop('price_sar', axis=1)], axis=0)
+# Load data from GitHub
+@st.cache_data
+def load_data():
+    # Replace this URL with your GitHub raw data URL
+    url = "https://raw.githubusercontent.com/1Hani-77/TEST/refs/heads/main/abha%20real%20estate.csv"
+    df = pd.read_csv(url)
     
-    # One-hot encode categorical features
-    combined_encoded = pd.get_dummies(combined, columns=[
-        'neighborhood_name', 
-        'classification_name', 
-        'property_type_name'
-    ])
+    # Data validation
+    required_columns = ['neighborhood_name', 'classification_name', 'property_type_name', 'area', 'price']
+    for col in required_columns:
+        if col not in df.columns:
+            raise ValueError(f"Missing required column: {col}")
     
-    # Separate back into input and features
-    input_encoded = combined_encoded[:1]
-    features_encoded = combined_encoded[1:]
+    # Convert price and area to numeric, removing any currency symbols or commas
+    df['price'] = pd.to_numeric(df['price'].astype(str).str.replace(r'[^\d.]', ''), errors='coerce')
+    df['area'] = pd.to_numeric(df['area'].astype(str).str.replace(r'[^\d.]', ''), errors='coerce')
     
-    return input_encoded, features_encoded
-
-# Sidebar inputs
-with st.sidebar:
-    st.header("🏡 Property Details")
+    # Remove any rows with null values
+    df = df.dropna(subset=['price', 'area'])
     
-    neighborhood_name = st.selectbox(
-        "Neighborhood",
-        options=df['neighborhood_name'].unique()
-    )
+    return df
+
+try:
+    df = load_data()
+    st.success("Data loaded successfully!")
     
-    classification_name = st.selectbox(
-        "Classification",
-        options=df['classification_name'].unique()
-    )
+    # Debug information
+    st.write("### Data Shape:", df.shape)
+    st.write("### Columns:", df.columns.tolist())
     
-    property_type_name = st.selectbox(
-        "Property Type",
-        options=df['property_type_name'].unique()
-    )
-    
-    area = st.slider(
-        "Area (sq meters)",
-        min_value=float(df['area'].min()),
-        max_value=float(df['area'].max()),
-        value=float(df['area'].median())
-    )
-    
-    bedrooms = st.slider(
-        "Bedrooms",
-        min_value=int(df['bedrooms'].min()),
-        max_value=int(df['bedrooms'].max()),
-        value=int(df['bedrooms'].median())
-    )
-    
-    bathrooms = st.slider(
-        "Bathrooms",
-        min_value=int(df['bathrooms'].min()),
-        max_value=int(df['bathrooms'].max()),
-        value=int(df['bathrooms'].median())
-    )
+    # Data Overview
+    with st.expander("Data Overview"):
+        st.write("### Raw Data Sample")
+        st.dataframe(df.head())
+        
+        st.write("### Data Statistics")
+        st.dataframe(df.describe())
 
-# Create input dataframe
-input_data = {
-    'neighborhood_name': neighborhood_name,
-    'classification_name': classification_name,
-    'property_type_name': property_type_name,
-    'area': area,
-    'bedrooms': bedrooms,
-    'bathrooms': bathrooms
-}
-input_df = pd.DataFrame(input_data, index=[0])
+        # Safe plotting with error handling
+        try:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write("### Price Distribution")
+                fig = px.histogram(df, x='price', title='Price Distribution',
+                                 labels={'price': 'Price', 'count': 'Count'})
+                st.plotly_chart(fig)
+            
+            with col2:
+                st.write("### Area vs Price")
+                fig = px.scatter(df, x='area', y='price', color='neighborhood_name',
+                               title='Area vs Price by Neighborhood',
+                               labels={'area': 'Area (m²)', 'price': 'Price', 
+                                     'neighborhood_name': 'Neighborhood'})
+                st.plotly_chart(fig)
+        except Exception as e:
+            st.error(f"Error creating plots: {str(e)}")
 
-# Preprocess data
-input_encoded, X_encoded = preprocess_data(input_df)
-y = df['price_sar']
+    # Sidebar inputs
+    with st.sidebar:
+        st.header("Enter Property Details")
+        
+        neighborhood = st.selectbox(
+            "Select Neighborhood",
+            options=sorted(df['neighborhood_name'].unique())
+        )
+        
+        classification = st.selectbox(
+            "Select Classification",
+            options=sorted(df['classification_name'].unique())
+        )
+        
+        property_type = st.selectbox(
+            "Select Property Type",
+            options=sorted(df['property_type_name'].unique())
+        )
+        
+        area = st.slider(
+            "Area (m²)",
+            min_value=float(df['area'].min()),
+            max_value=float(df['area'].max()),
+            value=float(df['area'].mean())
+        )
 
-# Train/test split
-X_train, X_test, y_train, y_test = train_test_split(
-    X_encoded, y, test_size=0.2, random_state=42
-)
+    # Prepare features
+    input_data = pd.DataFrame({
+        'neighborhood_name': [neighborhood],
+        'classification_name': [classification],
+        'property_type_name': [property_type],
+        'area': [area]
+    })
 
-# Model training
-model = RandomForestRegressor(n_estimators=200, random_state=42)
-model.fit(X_train, y_train)
+    # Model training
+    @st.cache_resource
+    def train_model(df):
+        # Prepare features
+        X = pd.get_dummies(df[['neighborhood_name', 'classification_name', 
+                              'property_type_name', 'area']], drop_first=True)
+        y = df['price']
+        
+        # Train model
+        model = RandomForestRegressor(n_estimators=100, random_state=42)
+        model.fit(X, y)
+        return model, X.columns
 
-# Model evaluation
-y_pred = model.predict(X_test)
-mae = mean_absolute_error(y_test, y_pred)
-r2 = r2_score(y_test, y_pred)
+    # Train model
+    model, feature_names = train_model(df)
 
-# Prediction
-prediction = model.predict(input_encoded)
+    # Make prediction
+    X_input = pd.get_dummies(input_data, drop_first=True)
+    # Ensure input has same columns as training data
+    for col in feature_names:
+        if col not in X_input.columns:
+            X_input[col] = 0
+    X_input = X_input[feature_names]
 
-# Display results
-st.subheader("📈 Model Performance")
-col1, col2 = st.columns(2)
-col1.metric("Mean Absolute Error", f"{mae:,.2f} SAR")
-col2.metric("R² Score", f"{r2:.2f}")
+    prediction = model.predict(X_input)[0]
 
-st.subheader("🔮 Price Prediction")
-st.metric("Predicted Property Price", f"{prediction[0]:,.2f} SAR")
+    # Display prediction
+    st.write("## Predicted Price")
+    st.write(f"### ${prediction:,.2f}")
 
-# Feature importance
-st.subheader("📊 Feature Importance")
-importances = pd.DataFrame({
-    'Feature': X_encoded.columns,
-    'Importance': model.feature_importances_
-}).sort_values('Importance', ascending=False)
-st.bar_chart(importances.set_index('Feature'))
+    # Feature importance
+    with st.expander("Model Insights"):
+        st.write("### Feature Importance")
+        feature_importance = pd.DataFrame({
+            'feature': feature_names,
+            'importance': model.feature_importances_
+        }).sort_values('importance', ascending=False)
+        
+        fig = px.bar(feature_importance, x='importance', y='feature', 
+                     orientation='h', title='Feature Importance')
+        st.plotly_chart(fig)
 
-# Save model
-joblib.dump(model, 'abha_real_estate_model.pkl')
+    # Similar properties
+    with st.expander("Similar Properties"):
+        st.write("### Properties in the same neighborhood")
+        similar_properties = df[df['neighborhood_name'] == neighborhood].head()
+        st.dataframe(similar_properties)
+        
+        fig = px.scatter(similar_properties, x='area', y='price',
+                        title='Similar Properties: Area vs Price',
+                        hover_data=['classification_name', 'property_type_name'])
+        st.plotly_chart(fig)
 
-# Download button for model
-with open('abha_real_estate_model.pkl', 'rb') as f:
-    st.download_button(
-        label="⬇️ Download Model",
-        data=f,
-        file_name='abha_real_estate_model.pkl',
-        mime='application/octet-stream'
-    )
+except Exception as e:
+    st.error(f"Error: {str(e)}")
+    st.write("Please check your data format and ensure all required columns are present.")
