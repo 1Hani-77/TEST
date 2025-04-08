@@ -32,7 +32,11 @@ def preprocess_data(input_df):
     combined = pd.concat([input_df, df.drop('price_sar', axis=1)], axis=0)
     
     # One-hot encode categorical features
-    combined_encoded = pd.get_dummies(combined, columns=['property_type', 'location'])
+    combined_encoded = pd.get_dummies(combined, columns=[
+        'neighborhood_name', 
+        'classification_name', 
+        'property_type_name'
+    ])
     
     # Separate back into input and features
     input_encoded = combined_encoded[:1]
@@ -44,14 +48,26 @@ def preprocess_data(input_df):
 with st.sidebar:
     st.header("🏡 Property Details")
     
-    property_type = st.selectbox(
-        "Property Type",
-        options=df['property_type'].unique()
+    neighborhood_name = st.selectbox(
+        "Neighborhood",
+        options=df['neighborhood_name'].unique()
     )
     
-    location = st.selectbox(
-        "Location",
-        options=df['location'].unique()
+    classification_name = st.selectbox(
+        "Classification",
+        options=df['classification_name'].unique()
+    )
+    
+    property_type_name = st.selectbox(
+        "Property Type",
+        options=df['property_type_name'].unique()
+    )
+    
+    area = st.slider(
+        "Area (sq meters)",
+        min_value=float(df['area'].min()),
+        max_value=float(df['area'].max()),
+        value=float(df['area'].median())
     )
     
     bedrooms = st.slider(
@@ -67,21 +83,15 @@ with st.sidebar:
         max_value=int(df['bathrooms'].max()),
         value=int(df['bathrooms'].median())
     )
-    
-    area_sq_m = st.slider(
-        "Area (sq meters)",
-        min_value=float(df['area_sq_m'].min()),
-        max_value=float(df['area_sq_m'].max()),
-        value=float(df['area_sq_m'].median())
-    )
 
 # Create input dataframe
 input_data = {
-    'property_type': property_type,
-    'location': location,
+    'neighborhood_name': neighborhood_name,
+    'classification_name': classification_name,
+    'property_type_name': property_type_name,
+    'area': area,
     'bedrooms': bedrooms,
-    'bathrooms': bathrooms,
-    'area_sq_m': area_sq_m
+    'bathrooms': bathrooms
 }
 input_df = pd.DataFrame(input_data, index=[0])
 
