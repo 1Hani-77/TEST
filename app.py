@@ -2,7 +2,6 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
 import plotly.express as px
 
 # Page config
@@ -38,7 +37,7 @@ def load_data():
         return df
     except Exception as e:
         st.error(f"Data loading failed: {str(e)}")
-        return pd.DataFrame()  # Return empty DataFrame for error handling
+        return pd.DataFrame()
 
 df = load_data()
 
@@ -74,10 +73,15 @@ if not df.empty:
         neighborhood = st.selectbox("Neighborhood", sorted(df['neighborhood_name'].unique()))
         classification = st.selectbox("Classification", sorted(df['classification_name'].unique()))
         property_type = st.selectbox("Property Type", sorted(df['property_type_name'].unique()))
+        
+        # Modified area slider with max 1500
+        area_min = float(df['area'].min())
+        area_max = 1500.0  # Hard-coded maximum
+        default_area = min(float(df['area'].median()), area_max)  # Ensure default doesn't exceed max
         area = st.slider("Area (m²)", 
-                        min_value=float(df['area'].min()), 
-                        max_value=float(df['area'].max()),
-                        value=float(df['area'].median()))
+                        min_value=area_min, 
+                        max_value=area_max,
+                        value=default_area)
 
     # Model training
     @st.cache_resource
