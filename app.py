@@ -1,63 +1,93 @@
 import streamlit as st
 import pandas as pd
-from sklearn.model_selection import train_test_split
+import numpy as np
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_absolute_error, r2_score
-import joblib
 
-# App title
 st.title('🏠 ABHA Real Estate Price Predictor')
 
-# Sidebar for user inputs
-st.sidebar.header('Upload Your Dataset')
-uploaded_file = st.sidebar.file_uploader("Upload CSV file", type=["csv"])
+st.info('This app predicts real estate prices in ABHA using machine learning!')
 
-if uploaded_file is not None:
-    # Load data
-    df = pd.read_csv(uploaded_file)
+# Load dataset
+url = 'https://raw.githubusercontent.com/SLW-20/ProjectMIS/master/abha%20real%20estate.csv'
+df = pd.read_csv(url)
+
+with st.expander('Raw Data'):
+    st.write('**Property Data**')
+    st.write(df)
     
-    # Show raw data
-    st.subheader('Raw Data Preview')
-    st.write(df.head())
+    st.write('**Features (X)**')
+    X_raw = df.drop('price_sar', axis=1)
+    st.write(X_raw)
     
-    # Data preprocessing
-    st.subheader('Feature Selection')
-    numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
-    features = st.multiselect('Select features', numeric_cols)
-    target = st.selectbox('Select target variable', numeric_cols)
+    st.write('**Target (y)**')
+    y_raw = df['price_sar']
+    st.write(y_raw)
+
+with st.expander('Data Visualization'):
+    st.scatter_chart(data=df, x='area_sq_m', y='price_sar', color='property_type')
+
+# Sidebar for user input
+with st.sidebar:
+    st.header('Property Specifications')
     
-    if features and target:
-        X = df[features]
-        y = df[target]
-        
-        # Train-test split
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        
-        # Model training
-        model = RandomForestRegressor(n_estimators=100, random_state=42)
-        model.fit(X_train, y_train)
-        
-        # Evaluation
-        y_pred = model.predict(X_test)
-        mae = mean_absolute_error(y_test, y_pred)
-        r2 = r2_score(y_test, y_pred)
-        
-        st.subheader('Model Performance')
-        st.write(f'Mean Absolute Error: {mae:.2f}')
-        st.write(f'R² Score: {r2:.2f}')
-        
-        # Save model
-        joblib.dump(model, 'abha_price_model.pkl')
-        
-        # Prediction interface
-        st.subheader('Make a Prediction')
-        input_data = {}
-        for feature in features:
-            input_data[feature] = st.number_input(feature, value=df[feature].mean())
-        
-        if st.button('Predict Price'):
-            loaded_model = joblib.load('abha_price_model.pkl')
-            prediction = loaded_model.predict(pd.DataFrame([input_data]))
-            st.success(f'Predicted Price: {prediction[0]:.2f} SAR')
-else:
-    st.info('Please upload a CSV file to begin analysis')
+    property_type = st.selectbox('Property Type', df['property_type'].unique())
+    bedrooms = st.slider('Bedrooms', 
+                        min_value=int(df['bedrooms'].min()), 
+                        max_value=int(df['bedrooms'].max()),
+                        value=int(df['bedrooms'].median()))
+    bathrooms = st.slider('Bathrooms', 
+                         min_value=int(df['bathrooms'].min()), 
+                         max_value=int(df['bathrooms'].max()),
+                         value=int(df['bathrooms'].median()))
+    area_sq_m = st.slider('Area (sq m)', 
+                         min_value=float(df['area_sq_m'].min()), 
+                         max_value=float(df['area_sq_m'].max()),
+                         value=float(df['area_sq_m'].median()))
+    location = st.selectbox('Location', df['location'].unique())
+
+# Create input DataFrame
+input_data = {
+    'property_type': property_type,
+    'bedrooms': bedrooms,
+    'bathrooms': bathrooms,
+    'area_sq_m': area_sq_m,
+    'location': location
+}
+input_df = pd.DataFrame(input_data, index=[0])
+
+# Combine user input with raw features
+combined_df = pd.concat([input_df, X_raw], axis=0)
+
+# Data preparation
+encode = ['property_type', 'location']
+encoded_df = pd.get_dummies(combined_df, columns=encode)
+
+# Split back into user input and features
+input_encoded = encoded_df[:1]
+X_encoded = encoded_df[1:]
+
+with st.expander('Encoded Features'):
+    st.write('**Encoded Input Features**')
+    st.write(input_encoded)
+    
+    st.write('**Encoded Training Data**')
+    st.write(X_encoded)
+
+# Model training
+model = RandomForestRegressor(n_estimators=100, random_state=42)
+model.fit(X_encoded, y_raw)
+
+# Prediction
+prediction = model.predict(input_encoded)
+
+# Display prediction
+st.subheader('Price Prediction')
+st.success(f'Predicted Property Price: **{prediction[0]:,.2f} SAR**')
+
+st.write('---')
+st.write('Model Features Importance:')
+importance_df = pd.DataFrame({
+    'Feature': X_encoded.columns,
+    'Importance': model.feature_importances_
+}).sort_values('Importance', ascending=False)
+st.bar_chart(importance_df.set_index('Feature'))
