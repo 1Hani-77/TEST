@@ -1,11 +1,19 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
 import plotly.express as px
 from supabase import create_client
 import os
 from PIL import Image
+from sklearn.model_selection import GridSearchCV
+from sklearn.ensemble import RandomForestRegressor
+
+# Attempt to import XGBoost. If not available, we will use RandomForest instead.
+try:
+    from xgboost import XGBRegressor
+    XGBOOST_AVAILABLE = True
+except ImportError:
+    XGBOOST_AVAILABLE = False
 
 # Attempt to import statsmodels to enable OLS trendline
 try:
@@ -322,16 +330,46 @@ if not df.empty:
         
         calculate_button = st.button("Calculate Price Prediction", use_container_width=True)
     
+    # ------------------------------
+    # Updated Model Training Section
+    # ------------------------------
     @st.cache_resource
     def train_model(data):
         try:
-            # One-hot encode without dropping the first category to include all indicator columns
-            X = pd.get_dummies(data[['neighborhood_name', 'classification_name',
-                                     'property_type_name', 'area']])
+            # One-hot encode categorical features along with numeric area
+            X = pd.get_dummies(data[['neighborhood_name', 'classification_name', 'property_type_name', 'area']])
             y = data['price']
-            model = RandomForestRegressor(n_estimators=100, random_state=42)
-            model.fit(X, y)
-            return model, X.columns.tolist()
+            
+            # Define parameter grid and model based on availability of XGBoost
+            if XGBOOST_AVAILABLE:
+                model = XGBRegressor(objective='reg:squarederror', random_state=42, verbosity=0)
+                param_grid = {
+                    'n_estimators': [100, 200, 300],
+                    'max_depth': [3, 5, 7],
+                    'learning_rate': [0.01, 0.1, 0.2],
+                    'subsample': [0.8, 1.0]
+                }
+            else:
+                model = RandomForestRegressor(random_state=42)
+                param_grid = {
+                    'n_estimators': [100, 200, 300],
+                    'max_depth': [None, 10, 20],
+                    'min_samples_split': [2, 5]
+                }
+            
+            grid_search = GridSearchCV(
+                estimator=model,
+                param_grid=param_grid,
+                cv=3,
+                scoring='neg_mean_squared_error',
+                n_jobs=-1
+            )
+            grid_search.fit(X, y)
+            best_model = grid_search.best_estimator_
+            
+            st.success(f"Best model parameters: {grid_search.best_params_}")
+            
+            return best_model, X.columns.tolist()
         except Exception as e:
             st.error(f"Model training failed: {str(e)}")
             return None, None
@@ -393,126 +431,126 @@ if not df.empty:
         except Exception as e:
             st.error(f"Prediction failed: {str(e)}")
     
-    st.markdown('<div class="sub-header">Market Analysis</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sub-header">Market Analysis</div>', unsafe_allow_html=True)
     
-    tab1, tab2, tab3 = st.tabs(["Price Distribution", "Area vs Price", "Model Performance"])
+        tab1, tab2, tab3 = st.tabs(["Price Distribution", "Area vs Price", "Model Performance"])
     
-    with tab1:
-        try:
-            fig = px.histogram(df, x='price', 
-                              title='Price Distribution in the Market',
-                              labels={'price': 'Price ($)', 'count': 'Number of Properties'},
-                              color_discrete_sequence=['#3B82F6'])
-            fig.update_layout(
-                title_font_size=20,
-                plot_bgcolor='white',
-                paper_bgcolor='white',
-                bargap=0.1,
-                margin=dict(l=20, r=20, t=40, b=20),
-                xaxis_title_font_size=14,
-                yaxis_title_font_size=14
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        except Exception as e:
-            st.error(f"Visualization error: {str(e)}")
-            
-    with tab2:
-        try:
-            # Decide whether to add the trendline based on statsmodels availability
-            if STATS_MODELS_AVAILABLE:
-                trendline_arg = "ols"
-                trendline_note = "Trendline: OLS (statsmodels installed)"
-            else:
-                trendline_arg = None
-                trendline_note = "Trendline: Not available (statsmodels not installed)"
-            
-            fig = px.scatter(
-                df, 
-                x='area', 
-                y='price', 
-                color='neighborhood_name',
-                title='Area vs Price by Neighborhood',
-                labels={'area': 'Area (m²)', 'price': 'Price ($)', 'neighborhood_name': 'Neighborhood'},
-                hover_data=['classification_name', 'property_type_name'],
-                trendline=trendline_arg,
-                color_discrete_sequence=px.colors.qualitative.Pastel
-            )
-            
-            # Make markers bigger, add a border
-            fig.update_traces(marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')))
-            
-            # Enhance layout
-            fig.update_layout(
-                title_font_size=20,
-                legend_title_font_size=14,
-                plot_bgcolor='white',
-                paper_bgcolor='white',
-                margin=dict(l=20, r=20, t=40, b=20),
-                xaxis_title_font_size=14,
-                yaxis_title_font_size=14,
-                annotations=[
-                    dict(
-                        text=trendline_note,
-                        x=0.5, 
-                        y=-0.15, 
-                        xref='paper', 
-                        yref='paper',
-                        showarrow=False, 
-                        font=dict(color="gray", size=12)
-                    )
-                ]
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        except Exception as e:
-            st.error(f"Visualization error: {str(e)}")
+        with tab1:
+            try:
+                fig = px.histogram(df, x='price', 
+                                  title='Price Distribution in the Market',
+                                  labels={'price': 'Price ($)', 'count': 'Number of Properties'},
+                                  color_discrete_sequence=['#3B82F6'])
+                fig.update_layout(
+                    title_font_size=20,
+                    plot_bgcolor='white',
+                    paper_bgcolor='white',
+                    bargap=0.1,
+                    margin=dict(l=20, r=20, t=40, b=20),
+                    xaxis_title_font_size=14,
+                    yaxis_title_font_size=14
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.error(f"Visualization error: {str(e)}")
+                
+        with tab2:
+            try:
+                # Decide whether to add the trendline based on statsmodels availability
+                if STATS_MODELS_AVAILABLE:
+                    trendline_arg = "ols"
+                    trendline_note = "Trendline: OLS (statsmodels installed)"
+                else:
+                    trendline_arg = None
+                    trendline_note = "Trendline: Not available (statsmodels not installed)"
+                
+                fig = px.scatter(
+                    df, 
+                    x='area', 
+                    y='price', 
+                    color='neighborhood_name',
+                    title='Area vs Price by Neighborhood',
+                    labels={'area': 'Area (m²)', 'price': 'Price ($)', 'neighborhood_name': 'Neighborhood'},
+                    hover_data=['classification_name', 'property_type_name'],
+                    trendline=trendline_arg,
+                    color_discrete_sequence=px.colors.qualitative.Pastel
+                )
+                
+                # Make markers bigger, add a border
+                fig.update_traces(marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')))
+                
+                # Enhance layout
+                fig.update_layout(
+                    title_font_size=20,
+                    legend_title_font_size=14,
+                    plot_bgcolor='white',
+                    paper_bgcolor='white',
+                    margin=dict(l=20, r=20, t=40, b=20),
+                    xaxis_title_font_size=14,
+                    yaxis_title_font_size=14,
+                    annotations=[
+                        dict(
+                            text=trendline_note,
+                            x=0.5, 
+                            y=-0.15, 
+                            xref='paper', 
+                            yref='paper',
+                            showarrow=False, 
+                            font=dict(color="gray", size=12)
+                        )
+                    ]
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.error(f"Visualization error: {str(e)}")
+        
+        with tab3:
+            try:
+                # Prepare training features for model performance evaluation
+                X_train = pd.get_dummies(df[['neighborhood_name', 'classification_name', 'property_type_name', 'area']])
+                for col in feature_columns:
+                    if col not in X_train.columns:
+                        X_train[col] = 0
+                X_train = X_train[feature_columns]
+                y_actual = df['price']
+                y_pred = model.predict(X_train)
+                
+                # Scatter plot for Actual vs Predicted Prices with a y=x reference line
+                performance_fig = px.scatter(
+                    x=y_actual, 
+                    y=y_pred,
+                    labels={'x': 'Actual Price', 'y': 'Predicted Price'},
+                    title='Model Performance: Actual vs Predicted Prices',
+                    color_discrete_sequence=['#3B82F6']
+                )
+                performance_fig.add_shape(
+                    type='line',
+                    x0=y_actual.min(), y0=y_actual.min(),
+                    x1=y_actual.max(), y1=y_actual.max(),
+                    line=dict(color='red', dash='dash'),
+                )
+                performance_fig.update_layout(
+                    plot_bgcolor='white',
+                    paper_bgcolor='white',
+                    margin=dict(l=20, r=20, t=40, b=20),
+                    xaxis_title_font_size=14,
+                    yaxis_title_font_size=14,
+                    title_font_size=20
+                )
+                st.plotly_chart(performance_fig, use_container_width=True)
+                
+                # Calculate RMSE and display
+                rmse = np.sqrt(np.mean((y_actual - y_pred) ** 2))
+                st.markdown(f"<div style='font-size:1.1rem; color: #374151;'>Model RMSE: <strong>${rmse:,.2f}</strong></div>", unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"Model performance visualization error: {str(e)}")
+                
+        st.markdown("""
+        <div style="margin-top: 4rem; padding-top: 1rem; border-top: 1px solid #E5E7EB; text-align: center; color: #6B7280; font-size: 0.875rem;">
+            <p>Real Estate Price Prediction App | Powered by Machine Learning</p>
+            <p>Data is updated daily from our real estate database</p>
+        </div>
+        """, unsafe_allow_html=True)
     
-    with tab3:
-        try:
-            # Prepare training features for model performance evaluation
-            X_train = pd.get_dummies(df[['neighborhood_name', 'classification_name', 'property_type_name', 'area']])
-            for col in feature_columns:
-                if col not in X_train.columns:
-                    X_train[col] = 0
-            X_train = X_train[feature_columns]
-            y_actual = df['price']
-            y_pred = model.predict(X_train)
-            
-            # Scatter plot for Actual vs Predicted Prices with a y=x reference line
-            performance_fig = px.scatter(
-                x=y_actual, 
-                y=y_pred,
-                labels={'x': 'Actual Price', 'y': 'Predicted Price'},
-                title='Model Performance: Actual vs Predicted Prices',
-                color_discrete_sequence=['#3B82F6']
-            )
-            performance_fig.add_shape(
-                type='line',
-                x0=y_actual.min(), y0=y_actual.min(),
-                x1=y_actual.max(), y1=y_actual.max(),
-                line=dict(color='red', dash='dash'),
-            )
-            performance_fig.update_layout(
-                plot_bgcolor='white',
-                paper_bgcolor='white',
-                margin=dict(l=20, r=20, t=40, b=20),
-                xaxis_title_font_size=14,
-                yaxis_title_font_size=14,
-                title_font_size=20
-            )
-            st.plotly_chart(performance_fig, use_container_width=True)
-            
-            # Calculate RMSE and display
-            rmse = np.sqrt(np.mean((y_actual - y_pred) ** 2))
-            st.markdown(f"<div style='font-size:1.1rem; color: #374151;'>Model RMSE: <strong>${rmse:,.2f}</strong></div>", unsafe_allow_html=True)
-        except Exception as e:
-            st.error(f"Model performance visualization error: {str(e)}")
-            
-    st.markdown("""
-    <div style="margin-top: 4rem; padding-top: 1rem; border-top: 1px solid #E5E7EB; text-align: center; color: #6B7280; font-size: 0.875rem;">
-        <p>Real Estate Price Prediction App | Powered by Machine Learning</p>
-        <p>Data is updated daily from our real estate database</p>
-    </div>
-    """, unsafe_allow_html=True)
-
 else:
     st.error("Failed to load data from Supabase. Please check your database connection and table structure.")
