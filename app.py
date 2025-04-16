@@ -15,7 +15,7 @@ try:
 except ImportError:
     XGBOOST_AVAILABLE = False
 
-# Attempt to import statsmodels to enable OLS trendline
+# Attempt to import statsmodels to enable OLS trendline for visualization
 try:
     import statsmodels
     STATS_MODELS_AVAILABLE = True
@@ -29,7 +29,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Load KKU logo and display in top-right corner with text below
+# ---------------------------
+# Load and Display KKU Logo
+# ---------------------------
 try:
     # Try to load logo from various possible paths
     if os.path.exists('kku.logo.jpg'):
@@ -44,7 +46,6 @@ try:
             './kku.logo.jpg',
             './images/kku.logo.jpg'
         ]
-        
         for path in possible_paths:
             if os.path.exists(path):
                 logo = Image.open(path)
@@ -53,7 +54,6 @@ try:
         else:
             raise FileNotFoundError("KKU logo image file not found. Please ensure 'kku.logo.jpg' is in the same directory as the app.")
     
-    # CSS to position logo top-right with text below
     st.markdown(
         """
         <style>
@@ -81,20 +81,19 @@ try:
         unsafe_allow_html=True
     )
     
-    # Display logo and text
     st.markdown('<div class="logo-container">', unsafe_allow_html=True)
     st.image(logo, width=200)
     st.markdown('<div class="logo-text">MIS Graduation Project</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
-    
     st.session_state['logo_displayed'] = True
-    
 except Exception as e:
     st.error(f"Error loading KKU logo: {str(e)}")
     st.info("Please ensure the KKU logo file (kku.logo.jpg) is in the same directory as this app.")
     st.session_state['logo_displayed'] = False
 
-# Custom CSS to improve the design of the application
+# ---------------------------
+# Custom CSS Styling
+# ---------------------------
 st.markdown("""
 <style>
     .main-header {
@@ -153,31 +152,28 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# App header with custom styling
 st.markdown('<div class="main-header">🏠 Real Estate Price Prediction App</div>', unsafe_allow_html=True)
 st.markdown('<div class="info-box">This app predicts real estate prices based on property features!</div>', unsafe_allow_html=True)
 
-# Supabase connection
+# ---------------------------
+# Supabase Connection & Data Loading
+# ---------------------------
 @st.cache_resource
 def init_connection():
     supabase_url = "https://imdnhiwyfgjdgextvrkj.supabase.co"
-    supabase_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImltZG5oaXd5ZmdqZGdleHR2cmtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk3MTM5NzksImV4cCI6MjA1NTI4OTk3OX0.9hIzkJYKrOTsKTKwjAyHRWBG2Rqe2Sgwq7WgddqLTDk"
-    
+    supabase_key = "YOUR_SUPABASE_KEY_HERE"
     try:
         return create_client(supabase_url, supabase_key)
     except Exception as e:
         st.error(f"Failed to connect to Supabase: {str(e)}")
         return None
 
-# Load reference tables to get names from IDs
 @st.cache_data(ttl=600)
 def load_reference_data():
     try:
         supabase = init_connection()
         if not supabase:
             return {}, {}, {}
-            
-        # Load neighborhoods table
         neighborhood_dict = {}
         try:
             neighborhood_response = supabase.table('neighborhoods').select('*').execute()
@@ -188,15 +184,13 @@ def load_reference_data():
                     neighborhood_dict = {item['id']: item['name'] for item in neighborhood_response.data}
         except Exception:
             pass
-            
-        # Load property type reference table
+
         property_type_dict = {}
         try:
             try:
                 property_type_response = supabase.table('property_type').select('*').execute()
             except:
                 property_type_response = supabase.table('property_types').select('*').execute()
-                
             if property_type_response.data:
                 if 'property_type_id' in property_type_response.data[0] and 'property_type_name' in property_type_response.data[0]:
                     property_type_dict = {item['property_type_id']: item['property_type_name'] for item in property_type_response.data}
@@ -204,8 +198,7 @@ def load_reference_data():
                     property_type_dict = {item['id']: item['name'] for item in property_type_response.data}
         except Exception:
             pass
-            
-        # Load classification reference table
+
         classification_dict = {}
         try:
             try:
@@ -215,7 +208,6 @@ def load_reference_data():
                     classification_response = supabase.table('classifications').select('*').execute()
                 except:
                     classification_response = supabase.table('property_classification').select('*').execute()
-                
             if classification_response.data:
                 if 'classification_id' in classification_response.data[0] and 'classification_name' in classification_response.data[0]:
                     classification_dict = {item['classification_id']: item['classification_name'] for item in classification_response.data}
@@ -223,73 +215,71 @@ def load_reference_data():
                     classification_dict = {item['id']: item['name'] for item in classification_response.data}
         except Exception:
             pass
-            
+
         return neighborhood_dict, property_type_dict, classification_dict
     except Exception as e:
         st.error(f"Failed to load reference data: {str(e)}")
         return {}, {}, {}
 
-# Load data from Supabase with ID columns
 @st.cache_data(ttl=600)
 def load_data():
     try:
         supabase = init_connection()
         if not supabase:
             return pd.DataFrame()
-        
-        # Fetch data from the 'properties' table
         response = supabase.table('properties').select('*').execute()
-        
-        # Convert response data to DataFrame
         df = pd.DataFrame(response.data)
-        
         if df.empty:
             raise ValueError("No data returned from database")
-        
-        # Identify columns using possible labels
+
+        # Determine column names dynamically
         neighborhood_id_col = next((col for col in df.columns if col in ['neighborhood_id', 'neighborhood']), None)
         property_type_id_col = next((col for col in df.columns if col in ['property_type_id', 'property_type']), None)
         classification_id_col = next((col for col in df.columns if col in ['classification_id', 'classification']), None)
         
         missing_columns = []
+        for col_req in ['price', 'area']:
+            if col_req not in df.columns:
+                missing_columns.append(col_req)
         if not neighborhood_id_col:
             missing_columns.append("neighborhood_id")
         if not property_type_id_col:
             missing_columns.append("property_type_id")
         if not classification_id_col:
             missing_columns.append("classification_id")
-        if 'area' not in df.columns:
-            missing_columns.append("area")
-        if 'price' not in df.columns:
-            missing_columns.append("price")
-        
+            
         if missing_columns:
             raise ValueError(f"Missing required columns: {', '.join(missing_columns)}")
         
         df['price'] = pd.to_numeric(df['price'], errors='coerce')
         df['area'] = pd.to_numeric(df['area'], errors='coerce')
-        
         df = df.dropna(subset=['price', 'area'])
         if df.empty:
             raise ValueError("No valid data remaining after cleaning")
-            
+
+        # Map reference IDs to names
         neighborhood_dict, property_type_dict, classification_dict = load_reference_data()
-        
         if neighborhood_dict and neighborhood_id_col:
             df['neighborhood_name'] = df[neighborhood_id_col].map(neighborhood_dict).fillna('Unknown')
         else:
             df['neighborhood_name'] = df[neighborhood_id_col].astype(str) if neighborhood_id_col else 'Unknown'
-            
         if property_type_dict and property_type_id_col:
             df['property_type_name'] = df[property_type_id_col].map(property_type_dict).fillna('Unknown')
         else:
             df['property_type_name'] = df[property_type_id_col].astype(str) if property_type_id_col else 'Unknown'
-            
         if classification_dict and classification_id_col:
             df['classification_name'] = df[classification_id_col].map(classification_dict).fillna('Unknown')
         else:
             df['classification_name'] = df[classification_id_col].astype(str) if classification_id_col else 'Unknown'
-            
+
+        # ---------------------------
+        # Remove Price Outliers (1st and 99th percentiles)
+        # ---------------------------
+        lower = df['price'].quantile(0.01)
+        upper = df['price'].quantile(0.99)
+        df = df[(df['price'] >= lower) & (df['price'] <= upper)]
+        df.reset_index(drop=True, inplace=True)
+
         return df
     except Exception as e:
         st.error(f"Data loading failed: {str(e)}")
@@ -298,16 +288,14 @@ def load_data():
 if 'db_connected' not in st.session_state:
     st.session_state['db_connected'] = False
 
-# Load data
 df = load_data()
 
 if not df.empty:
     st.session_state['db_connected'] = True
-    
-    # Create two main columns for the layout
-    col1, col2 = st.columns([1, 2])
-    
-    # Sidebar for inputs with improved styling
+
+    # ---------------------------
+    # Sidebar Inputs
+    # ---------------------------
     with st.sidebar:
         st.markdown('<div class="sub-header">Enter Property Details</div>', unsafe_allow_html=True)
         neighborhood = st.selectbox("Neighborhood", sorted(df['neighborhood_name'].unique()))
@@ -318,42 +306,41 @@ if not df.empty:
         area_min = float(df['area'].min())
         area_max = 1500.0
         default_area = min(float(df['area'].median()), area_max)
-        
         st.markdown("### Area (m²)")
-        area = st.slider("", 
-                         min_value=area_min, 
-                         max_value=area_max,
-                         value=default_area,
-                         format="%.2f m²")
-        
+        area = st.slider("", min_value=area_min, max_value=area_max, value=default_area, format="%.2f m²")
         st.markdown("<br>", unsafe_allow_html=True)
         
         calculate_button = st.button("Calculate Price Prediction", use_container_width=True)
     
-    # ------------------------------
-    # Updated Model Training Section
-    # ------------------------------
+    # ---------------------------
+    # Train the Model with Hyperparameter Tuning & Log Transform
+    # ---------------------------
     @st.cache_resource
     def train_model(data):
         try:
-            # One-hot encode categorical features along with numeric area
-            X = pd.get_dummies(data[['neighborhood_name', 'classification_name', 'property_type_name', 'area']])
-            y = data['price']
+            # Log-transform the target variable to reduce skew and stabilize variance.
+            # Save original price for later reference if needed.
+            data = data.copy()
+            data['log_price'] = np.log(data['price'])
             
-            # Define parameter grid and model based on availability of XGBoost
+            # One-hot encode categorical features along with numeric area.
+            X = pd.get_dummies(data[['neighborhood_name', 'classification_name', 'property_type_name', 'area']])
+            y = data['log_price']
+            
+            # Define model and parameter grid
             if XGBOOST_AVAILABLE:
                 model = XGBRegressor(objective='reg:squarederror', random_state=42, verbosity=0)
                 param_grid = {
-                    'n_estimators': [100, 200, 300],
-                    'max_depth': [3, 5, 7],
-                    'learning_rate': [0.01, 0.1, 0.2],
+                    'n_estimators': [100, 200],
+                    'max_depth': [3, 5],
+                    'learning_rate': [0.01, 0.1],
                     'subsample': [0.8, 1.0]
                 }
             else:
                 model = RandomForestRegressor(random_state=42)
                 param_grid = {
-                    'n_estimators': [100, 200, 300],
-                    'max_depth': [None, 10, 20],
+                    'n_estimators': [100, 200],
+                    'max_depth': [None, 10],
                     'min_samples_split': [2, 5]
                 }
             
@@ -366,9 +353,7 @@ if not df.empty:
             )
             grid_search.fit(X, y)
             best_model = grid_search.best_estimator_
-            
             st.success(f"Best model parameters: {grid_search.best_params_}")
-            
             return best_model, X.columns.tolist()
         except Exception as e:
             st.error(f"Model training failed: {str(e)}")
@@ -377,27 +362,25 @@ if not df.empty:
     model, feature_columns = train_model(df)
     
     if model and feature_columns:
+        # Process the input query
         input_df = pd.DataFrame([{
             'neighborhood_name': neighborhood,
             'classification_name': classification,
             'property_type_name': property_type,
             'area': area
         }])
-        
-        # One-hot encode input without dropping any category
         input_processed = pd.get_dummies(input_df)
         
-        # Ensure all expected feature columns are available; if missing, add with value 0
+        # Ensure all expected features are in the input, add missing ones as 0.
         for col in feature_columns:
             if col not in input_processed.columns:
                 input_processed[col] = 0
-        
-        # Reorder columns to match the training data
         input_processed = input_processed[feature_columns]
         
         try:
-            prediction = model.predict(input_processed)[0]
-            
+            # Make prediction on the log scale and then convert back to dollars.
+            log_prediction = model.predict(input_processed)[0]
+            prediction = np.exp(log_prediction)
             st.markdown('<div class="prediction-box">', unsafe_allow_html=True)
             st.markdown('<div style="font-size: 1.5rem; color: #6B7280;">Estimated Property Price</div>', unsafe_allow_html=True)
             st.markdown(f'<div style="font-size: 3rem; font-weight: bold; color: #1E3A8A; margin: 1rem 0;">${prediction:,.2f}</div>', unsafe_allow_html=True)
@@ -431,8 +414,10 @@ if not df.empty:
         except Exception as e:
             st.error(f"Prediction failed: {str(e)}")
     
+        # ---------------------------
+        # Market Analysis & Model Performance
+        # ---------------------------
         st.markdown('<div class="sub-header">Market Analysis</div>', unsafe_allow_html=True)
-    
         tab1, tab2, tab3 = st.tabs(["Price Distribution", "Area vs Price", "Model Performance"])
     
         with tab1:
@@ -456,14 +441,8 @@ if not df.empty:
                 
         with tab2:
             try:
-                # Decide whether to add the trendline based on statsmodels availability
-                if STATS_MODELS_AVAILABLE:
-                    trendline_arg = "ols"
-                    trendline_note = "Trendline: OLS (statsmodels installed)"
-                else:
-                    trendline_arg = None
-                    trendline_note = "Trendline: Not available (statsmodels not installed)"
-                
+                trendline_arg = "ols" if STATS_MODELS_AVAILABLE else None
+                trendline_note = "Trendline: OLS (statsmodels installed)" if STATS_MODELS_AVAILABLE else "Trendline: Not available"
                 fig = px.scatter(
                     df, 
                     x='area', 
@@ -475,11 +454,7 @@ if not df.empty:
                     trendline=trendline_arg,
                     color_discrete_sequence=px.colors.qualitative.Pastel
                 )
-                
-                # Make markers bigger, add a border
                 fig.update_traces(marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')))
-                
-                # Enhance layout
                 fig.update_layout(
                     title_font_size=20,
                     legend_title_font_size=14,
@@ -488,34 +463,32 @@ if not df.empty:
                     margin=dict(l=20, r=20, t=40, b=20),
                     xaxis_title_font_size=14,
                     yaxis_title_font_size=14,
-                    annotations=[
-                        dict(
-                            text=trendline_note,
-                            x=0.5, 
-                            y=-0.15, 
-                            xref='paper', 
-                            yref='paper',
-                            showarrow=False, 
-                            font=dict(color="gray", size=12)
-                        )
-                    ]
+                    annotations=[{
+                        "text": trendline_note,
+                        "x": 0.5,
+                        "y": -0.15,
+                        "xref": "paper",
+                        "yref": "paper",
+                        "showarrow": False,
+                        "font": {"color": "gray", "size": 12}
+                    }]
                 )
                 st.plotly_chart(fig, use_container_width=True)
             except Exception as e:
                 st.error(f"Visualization error: {str(e)}")
-        
+                
         with tab3:
             try:
-                # Prepare training features for model performance evaluation
+                # Evaluate model performance on the training set
                 X_train = pd.get_dummies(df[['neighborhood_name', 'classification_name', 'property_type_name', 'area']])
                 for col in feature_columns:
                     if col not in X_train.columns:
                         X_train[col] = 0
                 X_train = X_train[feature_columns]
+                # Predict log(price) then transform back
+                log_y_pred = model.predict(X_train)
+                y_pred = np.exp(log_y_pred)
                 y_actual = df['price']
-                y_pred = model.predict(X_train)
-                
-                # Scatter plot for Actual vs Predicted Prices with a y=x reference line
                 performance_fig = px.scatter(
                     x=y_actual, 
                     y=y_pred,
@@ -539,7 +512,6 @@ if not df.empty:
                 )
                 st.plotly_chart(performance_fig, use_container_width=True)
                 
-                # Calculate RMSE and display
                 rmse = np.sqrt(np.mean((y_actual - y_pred) ** 2))
                 st.markdown(f"<div style='font-size:1.1rem; color: #374151;'>Model RMSE: <strong>${rmse:,.2f}</strong></div>", unsafe_allow_html=True)
             except Exception as e:
@@ -551,6 +523,5 @@ if not df.empty:
             <p>Data is updated daily from our real estate database</p>
         </div>
         """, unsafe_allow_html=True)
-    
 else:
     st.error("Failed to load data from Supabase. Please check your database connection and table structure.")
